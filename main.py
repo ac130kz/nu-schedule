@@ -1,10 +1,11 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-# built-in
+###############################################################################
+# built-ins
 from collections import defaultdict
 from itertools import groupby, product, chain, combinations
-from re import compile as compiles
+from re import compile as re_compiler
 from sys import exit, argv
 from time import strptime
 from datetime import datetime
@@ -13,6 +14,7 @@ import logging
 import json
 import asyncio
 
+###############################################################################
 # imports
 import aiohttp
 from tabulate import tabulate
@@ -22,6 +24,7 @@ from PySide2.QtWidgets import (QApplication, QComboBox, QDesktopWidget,
                                QLabel, QPushButton, QVBoxLayout, QWidget, QDialog, QFrame)
 from PySide2.QtCore import Qt
 
+###############################################################################
 # Simple logging suite
 logging.basicConfig(
     filename="main.log",
@@ -30,18 +33,29 @@ logging.basicConfig(
     datefmt="%d/%m/%Y %H:%M:%S")
 log = logging.getLogger(__name__)
 
-# Regex expression to manage course sections
-reg = compiles(r"(?:\d+)([a-zA-Z]+)")
-# Enumeration of days
-table = {"M": 0, "T": 1, "W": 2, "R": 3, "F": 4, "S": 5, "*": 6}
 ###############################################################################
-api = "https://registrar.nu.edu.kz/my-registrar/public-course-catalog/json"
-headers = {"Host": "registrar.nu.edu.kz",
-           "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:70.0) Gecko/20100101 Firefox/70.0",
+# Global vars
+
+# Regex expression to manage course sections
+SECTION_REGEX = re_compiler(r"(?:\d+)([a-zA-Z]+)")
+
+# Enumeration of days
+DAY_TABLE = {"M": 0, "T": 1, "W": 2, "R": 3, "F": 4, "S": 5, "*": 6}
+API = "https://registrar.nu.edu.kz/my-registrar/public-course-catalog/json"
+HEADERS = {"Host": "registrar.nu.edu.kz",
+           "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.129 Safari/537.36",
            "Referer": "https://registrar.nu.edu.kz/course-catalog",
            "Content-Type": "application/x-www-form-urlencoded",
            "X-Requested-With": "XMLHttpRequest",
            "Connection": "keep-alive"}
+
+##############################################################################
+# Fetch config
+SEMESTER_ID = "442"                 # Spring 2020
+SCHOOL_IDS = ["13", "12"]           # SSH and SEDS
+LEVEL_IDS = "1"                     # Undergraduate
+
+#############################################################################
 
 
 class Request(Enum):
@@ -54,32 +68,28 @@ async def fetch(session: aiohttp.ClientSession, request_type: Request, page=1, c
         data = {"method": "getSearchData",
                 "searchParams[formSimple]": "false",
                 "searchParams[limit]": "100",
-                "searchParams[page]": str(page),
+                "searchParams[page]": f"{page}",
                 "searchParams[start]": "0",
                 "searchParams[quickSearch]": "",
                 "searchParams[sortField]": "-1",
                 "searchParams[sortDescending]": "-1",
-                # Spring 2020
-                "searchParams[semester]": "442",
-                # SHSS and SST now don't exist, we use SSH and SEDS
-                "searchParams[schools][]": ["13", "12"],
+                "searchParams[semester]": SEMESTER_ID,
+                "searchParams[schools][]": SCHOOL_IDS,
                 "searchParams[departments]": "",
-                # undergraduate
-                "searchParams[levels][]": "1",
+                "searchParams[levels][]": LEVEL_IDS,
                 "searchParams[subjects]": "",
                 "searchParams[instructors]": "",
                 "searchParams[breadths]": "",
                 "searchParams[abbrNum]": "",
                 "searchParams[credit]": ""
                 }
-        async with session.post(api, headers=headers, data=data) as response:
+        async with session.post(API, headers=HEADERS, data=data) as response:
             return await response.json(content_type="text/html")
     else:
         data = {"method": "getSchedule",
                 "courseId": courseid,
-                # Spring 2020
-                "termId": "442"}
-        async with session.post(api, headers=headers, data=data) as response:
+                "termId": SEMESTER_ID}
+        async with session.post(API, headers=HEADERS, data=data) as response:
             return courseid, await response.json(content_type="text/html")
 
 
@@ -112,7 +122,7 @@ async def fetch_worker():
 
         return courses
 
-    ###############################################################################
+###############################################################################
 
 
 class Course():
@@ -135,7 +145,7 @@ class Course():
                 a, "%I:%M %p"), strptime(b, "%I:%M %p")
         else:
             self.start, self.end = str(), str()
-        self.dayslist = [table.get(i) for i in table if i in self.days]
+        self.dayslist = [DAY_TABLE.get(i) for i in DAY_TABLE if i in self.days]
 
     def __repr__(self):
         return f"{self.abbr} | {self.st} | {self.title} | {self.credit} | {self.days} | {self.timing} | {self.teacher} | {self.room}"
@@ -180,7 +190,7 @@ class UI(QWidget):
 
         d = QDialog()
         l1 = QLabel(
-            "nu-schedule\n\nA course schedule generator for the Nazarbayev University\nHomepage: https://github.com/ac130kz/nu-schedule\nApache 2.0 License\n\n© Mikhail Krassavin, 2019")
+            "nu-schedule\n\nA course schedule generator for the Nazarbayev University\nHomepage: https://github.com/ac130kz/nu-schedule\nApache 2.0 License\n\n© Mikhail Krassavin, 2020")
         b1 = QPushButton("Ok", d)
         vbox = QVBoxLayout()
         vbox.addWidget(l1)
@@ -270,7 +280,7 @@ class UI(QWidget):
 
         d = QDialog()
         b1 = QPushButton("Ok", d)
-        lbl1 = QLabel("Results successfully saved as result" + desc + ".txt")
+        lbl1 = QLabel(f"Results successfully saved as result{desc}.txt")
         vbox = QVBoxLayout()
         vbox.addWidget(lbl1)
         vbox.addStretch()
@@ -382,7 +392,7 @@ class UI(QWidget):
         result = defaultdict(lambda: defaultdict(list))
 
         for obj in inlist:
-            result[obj.abbr][reg.search(obj.st).group(1)].append(obj)
+            result[obj.abbr][SECTION_REGEX.search(obj.st).group(1)].append(obj)
 
         inlist = [(list(r.values())[0][0].abbr, list(r.values()))
                   for r in result.values()]
