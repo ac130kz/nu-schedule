@@ -83,21 +83,19 @@ async def fetch(session: aiohttp.ClientSession, request_type: Request, page=1, c
                 "searchParams[abbrNum]": "",
                 "searchParams[credit]": ""
                 }
-        async with session.post(API, headers=HEADERS, data=data) as response:
-            return await response.json(content_type="text/html")
     else:
         data = {"method": "getSchedule",
                 "courseId": courseid,
                 "termId": SEMESTER_ID}
-        async with session.post(API, headers=HEADERS, data=data) as response:
-            return courseid, await response.json(content_type="text/html")
+    async with session.post(API, headers=HEADERS, data=data) as response:
+        parsed_response = await response.json(content_type="text/html")
+        return parsed_response if request_type == Request.COURSE else (courseid, parsed_response)
 
 
 async def fetch_worker():
     async with aiohttp.ClientSession() as session:
         # the first courses page
-        tasks = []
-        courses = await fetch(session, Request.COURSE)
+        tasks, courses = [], await fetch(session, Request.COURSE)
 
         # working on the courses
         max_range = 3 + int(courses["total"]) // 100
@@ -168,8 +166,7 @@ class UI(QWidget):
 
     """Simple Qt UI"""
 
-    coursesconnector = list()
-    finallist = list()
+    coursesconnector, finallist = list(), list()
 
     def __init__(self, parent=None):
         """ Initializing """
@@ -403,14 +400,12 @@ class UI(QWidget):
         """ Main window UI """
 
         # Defining labels
-        # -------------------------------------
         self.label = QLabel(self)
         self.label.setAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
         if not self.finallist:
             self.label.setText("Data was not loaded")
 
         # Defining buttons
-        # -------------------------------------
         load_button = QPushButton("Load")
         edit_button = QPushButton("Edit needed courses")
         help_button = QPushButton("Help")
@@ -420,7 +415,6 @@ class UI(QWidget):
             "QPushButton {background-color: #c7f439; color: red; font-size: 50px;}")
 
         # Dealing with the interface of the app
-        # -------------------------------------
         grid = QGridLayout()
         grid.addWidget(load_button)
         grid.addWidget(edit_button)
@@ -431,7 +425,6 @@ class UI(QWidget):
         self.setLayout(grid)
 
         # Slot calls
-        # ------------------------------------
         help_button.clicked.connect(self.on_help_clicked)
         edit_button.clicked.connect(self.on_edit_clicked)
         about_button.clicked.connect(self.on_about_clicked)
@@ -439,7 +432,6 @@ class UI(QWidget):
         gen_button.clicked.connect(self.on_gen_clicked)
 
         # Setting window properties
-        # ------------------------------------
         self.setGeometry(600, 300, 500, 270)
         self.center()
         self.setWindowTitle("nu-schedule")
